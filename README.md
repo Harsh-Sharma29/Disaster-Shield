@@ -1,4 +1,4 @@
-## DisasterSheild - Integrating Edge AI, Blockchain, and IoT for Autonomous Disaster Resilience and Rapid Response.
+## DisasterSheild - Integrating Edge AI for Autonomous Disaster Resilience and Rapid Response.
 
 ## Project Overview
 
