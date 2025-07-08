@@ -14,7 +14,6 @@ import {
   Computer
 } from 'lucide-react';
 import { ThemeContext } from '../contexts/ThemeContext';
-
 const Settings = () => {
   const { darkMode, toggleDarkMode } = useContext(ThemeContext);
   const [activeTab, setActiveTab] = useState('profile');
