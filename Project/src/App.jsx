@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-
-// Context Providers
-import { ThemeProvider } from './contexts/ThemeContext';
-import { AuthProvider, ProtectedRoute } from './contexts/AuthContext';
-import { LocationProvider } from './contexts/LocationContext';
-
-// Layout Components
 import Layout from './components/Layout/Layout';
 
 // Main Pages
