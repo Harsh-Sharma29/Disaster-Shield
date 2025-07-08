@@ -7,7 +7,7 @@ import {
   ArrowDown, 
   ArrowUp, 
   Search, 
-  Plus, 
+  Plus,
   Eye, 
   X, 
   MapPin, 
