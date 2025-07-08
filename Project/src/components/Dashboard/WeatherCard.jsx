@@ -58,7 +58,8 @@ function WeatherCard() {
     if (!locationLoading) {
       loadWeatherData();
     }
-  }, [location, locationLoading]);
+  }, 
+    [location, locationLoading]);
 
   // Use context weather as fallback
   useEffect(() => {
