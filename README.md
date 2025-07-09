@@ -1,6 +1,10 @@
 ## TEAM ResQTech 
 ## DisasterShield - Integrating Edge AI for Autonomous Disaster Resilience and Rapid Response.
 
+
+## Project Video Link
+https://drive.google.com/drive/folders/1RqtDxxg3SyRG0rROvd26ptO_N1OwciAF?usp=sharing
+
 ## Project Overview
 
 DisasterShield is an AI-powered, decentralized disaster management system that leverages Edge AI, and Blockchain to predict, alert, help and coordinate emergency responses autonomously. Our solution ensures faster disaster detection, real-time communication, and optimized resource allocation, minimizing damage and casualties.
@@ -452,5 +456,3 @@ This project stands on the shoulders of giants:
 - All open source contributors who make projects like this possible
 
 
-##video link
-https://drive.google.com/drive/folders/1RqtDxxg3SyRG0rROvd26ptO_N1OwciAF?usp=sharing
