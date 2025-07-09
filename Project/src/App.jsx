@@ -1,16 +1,30 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+
+// Context Providers
+import { ThemeProvider } from './contexts/ThemeContext';
+import { AuthProvider, ProtectedRoute } from './contexts/AuthContext';
+import { LocationProvider } from './contexts/LocationContext';
+
+// Layout Components
 import Layout from './components/Layout/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
+import AuthDebug from './components/AuthDebug';
+
+// Authentication Components
+import Login from './components/Auth/Login';
+import Register from './components/Auth/Register';
 
 // Main Pages
 import Dashboard from './pages/Dashboard';
 import LandingDashboard from './pages/LandingDashboard';
-import AlertsWarnings from './pages/AlertsWarnings';
+import AlertsWarningsFixed from './pages/AlertsWarningsFixed';
 import Resources from './pages/Resources';
-import MapViewfrom './pages/MapView';
+import MapViewFixed from './pages/MapViewFixed';
 import EmergencyTeams from './pages/EmergencyTeams';
 import Settings from './pages/Settings';
+import SmartContracts from './pages/SmartContracts';
 import NotFound from './pages/NotFound';
 
 // Enhanced Loading Component
@@ -139,33 +153,21 @@ function App() {
                   <Route path="alerts" element={<AlertsWarningsFixed />} />
                   <Route path="alerts/:alertId" element={<AlertsWarningsFixed />} />
                   
-                  {/* Resources Routes - Protected for coordinators and above */}
-                  <Route path="resources" element={
-                    <ProtectedRoute requiredRole={['admin', 'coordinator', 'responder']}>
-                      <Resources />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="resources/:resourceId" element={
-                    <ProtectedRoute requiredRole={['admin', 'coordinator', 'responder']}>
-                      <Resources />
-                    </ProtectedRoute>
-                  } />
+                  {/* Resources Routes - Available to all authenticated users */}
+                  <Route path="resources" element={<Resources />} />
+                  <Route path="resources/:resourceId" element={<Resources />} />
                   
                   {/* Map View - Available to all authenticated users */}
                   <Route path="map" element={<MapViewFixed />} />
                   <Route path="map/:location" element={<MapViewFixed />} />
                   
-                  {/* Emergency Teams - Protected for responders and above */}
-                  <Route path="teams" element={
-                    <ProtectedRoute requiredRole={['admin', 'coordinator', 'responder']}>
-                      <EmergencyTeams />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="teams/:teamId" element={
-                    <ProtectedRoute requiredRole={['admin', 'coordinator', 'responder']}>
-                      <EmergencyTeams />
-                    </ProtectedRoute>
-                  } />
+                  {/* Emergency Teams - Available to all authenticated users */}
+                  <Route path="teams" element={<EmergencyTeams />} />
+                  <Route path="teams/:teamId" element={<EmergencyTeams />} />
+                  
+                  {/* Smart Contracts - Available to all authenticated users */}
+                  <Route path="smart-contracts" element={<SmartContracts />} />
+                  <Route path="smart-contracts/:contractId" element={<SmartContracts />} />
                   
                   {/* Settings - Available to all authenticated users */}
                   <Route path="settings" element={<Settings />} />
