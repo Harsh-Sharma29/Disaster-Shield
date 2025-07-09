@@ -32,4 +32,30 @@ Project/
 ├── public/        # Static assets
 ├── package.json   # Project config
 └── 
-##
+## Routing & Navigation
+- Main routes: `/dashboard`, `/alerts`, `/resources`, `/map`, `/teams`, `/settings`
+- Dynamic routes: `/alerts/:alertId`, `/resources/:resourceId`, etc.
+- Features: Breadcrumbs, sidebar, quick nav (Ctrl+K), 404 page
+
+## Authentication & Demo Mode
+- JWT-based login (see `src/contexts/AuthContext.jsx`)
+- Demo accounts: admin, coordinator, responder, citizen
+- Fallback to demo mode if API is unavailable
+
+## AI Prediction System
+- AI-powered risk assessment (see `src/components/Dashboard/AIPredictionCard.jsx`)
+- Supports flood, wildfire, earthquake, storm predictions
+- Location-based, with confidence scores and recommendations
+
+## Live Location & Map
+- Real-time user location (see `src/components/Map/LiveLocationMap.jsx`)
+- Interactive map with risk zones, facilities, and team/resource tracking
+
+## Weather Integration
+- Live weather from OpenWeatherMap (see `src/services/weatherService.js`)
+- 5-day forecast, icons, and location-based data
+
+## Alerts, Resources, Teams Management
+- Alerts: `src/pages/AlertsWarnings.jsx`, backend `server/routes/alerts.js`
+- Resources: `src/pages/Resources.jsx`, backend `server/routes/resources.js`
+- Teams: `src/pages/EmergencyTeams.jsx`, backend `server/routes/teams.js`
