@@ -1,7 +1,3 @@
-/**
- * Notification Service
- * Handles sending SMS alerts via Twilio and email notifications
- */
 import twilio from 'twilio';
 import nodemailer from 'nodemailer';
 import User from '../models/User.js';
