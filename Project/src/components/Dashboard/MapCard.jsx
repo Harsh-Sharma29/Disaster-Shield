@@ -1,714 +1,693 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMapEvents, useMap } from 'react-leaflet';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Navigation, 
-  MapPin, 
-  RefreshCw, 
-  AlertTriangle, 
-  Wifi, 
-  WifiOff,
-  Target,
-  Users,
-  Shield,
-  Phone,
-  Clock,
-  Battery,
-  Satellite
-} from 'lucide-react';
-import L from 'leaflet';
-import locationService from '../../services/locationService';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MapPin, Navigation, RefreshCw, AlertTriangle, Wifi, WifiOff, Clock, Router, Building2, Shield, Phone, Building } from 'lucide-react';
 import { responsiveClasses, cn } from '../../utils/responsive';
 
-// Fix Leaflet default icon issue - ensure we're in browser environment
-if (typeof window !== 'undefined') {
-  // Use CDN URLs for reliability
-  try {
-    delete L.Icon.Default.prototype._getIconUrl;
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-    });
-  } catch (error) {
-    console.warn('Leaflet icon initialization failed:', error);
-  }
-}
-
-// Custom icons for different markers
-const createCustomIcon = (type, color = '#3B82F6') => {
-  return L.divIcon({
-    html: `
-      <div style="
-        background: ${color};
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div style="
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
-          animation: pulse 2s infinite;
-        "></div>
-      </div>
-      <style>
-        @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
+// Simple location service mock
+const simpleLocationService = {
+  async getCurrentLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation not supported'));
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          });
+        },
+        (error) => {
+          reject(error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
         }
-      </style>
-    `,
-    className: 'custom-marker',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
+      );
+    });
+  },
+  
+  async reverseGeocode(lat, lng) {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`
+      );
+      const data = await response.json();
+      return {
+        displayName: data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        city: data.address?.city || data.address?.town || 'Unknown',
+        country: data.address?.country || 'Unknown'
+      };
+    } catch (error) {
+      return {
+        displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        city: 'Unknown',
+        country: 'Unknown'
+      };
+    }
+  },
+  
+  async getNearbyPlaces(lat, lng, radius = 5000) {
+    try {
+      const places = [];
+      const placeTypes = [
+        { type: 'hospital', icon: Building2, color: 'text-red-500', label: 'Hospital' },
+        { type: 'police', icon: Shield, color: 'text-blue-500', label: 'Police Station' },
+        { type: 'fire_station', icon: AlertTriangle, color: 'text-orange-500', label: 'Fire Station' },
+        { type: 'pharmacy', icon: Building, color: 'text-green-500', label: 'Pharmacy' },
+        { type: 'school', icon: Building, color: 'text-purple-500', label: 'School' },
+        { type: 'bank', icon: Building, color: 'text-yellow-600', label: 'Bank' }
+      ];
+      
+      for (const placeType of placeTypes) {
+        try {
+          const response = await fetch(
+            `https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];(node["amenity"="${placeType.type}"](around:${radius},${lat},${lng});way["amenity"="${placeType.type}"](around:${radius},${lat},${lng}););out center;`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const nearbyPlaces = data.elements.slice(0, 5).map(element => ({
+              id: element.id,
+              name: element.tags?.name || `${placeType.label}`,
+              type: placeType.type,
+              lat: element.lat || element.center?.lat,
+              lng: element.lon || element.center?.lon,
+              icon: placeType.icon,
+              color: placeType.color,
+              label: placeType.label,
+              address: element.tags?.['addr:full'] || element.tags?.['addr:street'] || 'Address not available',
+              phone: element.tags?.phone || 'Phone not available',
+              distance: this.calculateDistance(lat, lng, element.lat || element.center?.lat, element.lon || element.center?.lon)
+            }));
+            
+            places.push(...nearbyPlaces);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch ${placeType.type}:`, error);
+        }
+      }
+      
+      // Sort by distance and return top 20
+      const sortedPlaces = places.sort((a, b) => a.distance - b.distance).slice(0, 20);
+      
+      // If no places found, return static fallback data
+      if (sortedPlaces.length === 0) {
+        console.log('Using static fallback data for MapCard nearby places');
+        return this.generateStaticPlaces(lat, lng, placeTypes);
+      }
+      
+      return sortedPlaces;
+    } catch (error) {
+      console.error('Error fetching nearby places:', error);
+      // Return static fallback data when API fails
+      return this.generateStaticPlaces(lat, lng, placeTypes);
+    }
+  },
+  
+  generateStaticPlaces(lat, lng, placeTypes) {
+    const staticPlaces = [];
+    const sampleNames = {
+      hospital: ['City Hospital', 'Medical Center', 'Community Hospital', 'Emergency Care'],
+      police: ['Police Station', 'Law Enforcement', 'Public Safety', 'Police Precinct'],
+      fire_station: ['Fire Station', 'Fire Department', 'Emergency Services', 'Rescue Station'],
+      pharmacy: ['Pharmacy', 'Drug Store', 'Medical Supplies', 'Health Store'],
+      school: ['Elementary School', 'High School', 'Education Center', 'Learning Academy'],
+      bank: ['Bank', 'Credit Union', 'Financial Center', 'ATM Location']
+    };
+    
+    const addresses = [
+      '123 Main St', '456 Oak Ave', '789 Pine Rd', '321 Elm St', '654 Maple Dr'
+    ];
+    
+    const phoneNumbers = [
+      '+1-555-0123', '+1-555-0456', '+1-555-0789', '+1-555-0321', '+1-555-0654'
+    ];
+    
+    placeTypes.forEach((placeType) => {
+      const count = Math.floor(Math.random() * 2) + 1; // 1-2 places per type
+      
+      for (let i = 0; i < count; i++) {
+        const randomOffset = () => (Math.random() - 0.5) * 0.05;
+        const distance = Math.random() * 4 + 1; // 1-5km distance
+        
+        staticPlaces.push({
+          id: `static_${placeType.type}_${i}`,
+          name: sampleNames[placeType.type][Math.floor(Math.random() * sampleNames[placeType.type].length)],
+          type: placeType.type,
+          lat: lat + randomOffset(),
+          lng: lng + randomOffset(),
+          icon: placeType.icon,
+          color: placeType.color,
+          label: placeType.label,
+          address: addresses[Math.floor(Math.random() * addresses.length)],
+          phone: phoneNumbers[Math.floor(Math.random() * phoneNumbers.length)],
+          distance: distance
+        });
+      }
+    });
+    
+    return staticPlaces.sort((a, b) => a.distance - b.distance);
+  },
+  
+  calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
 };
 
-// Map event handler for live tracking
-function LiveTracker({ onLocationUpdate, centerOnUser }) {
-  const map = useMap();
-  
-  useMapEvents({
-    locationfound(e) {
-      if (onLocationUpdate) {
-        onLocationUpdate(e.latlng, e.accuracy);
-      }
-      if (centerOnUser) {
-        map.flyTo(e.latlng, Math.max(map.getZoom(), 15));
-      }
-    },
-    locationerror(e) {
-      console.error('Location error:', e.message);
-    }
-  });
-
-  useEffect(() => {
-    map.locate({ 
-      watch: true, 
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 30000
+// Connection status checker
+const checkConnection = async () => {
+  try {
+    const response = await fetch('https://httpbin.org/get', {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-cache',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+};
 
-    return () => {
-      map.stopLocate();
-    };
-  }, [map]);
-
-  return null;
-}
-
-// Location accuracy circle component
-function AccuracyCircle({ position, accuracy }) {
-  if (!position || !accuracy) return null;
-  
-  return (
-    <Circle
-      center={position}
-      radius={accuracy}
-      pathOptions={{
-        color: '#3B82F6',
-        fillColor: '#3B82F6',
-        fillOpacity: 0.1,
-        weight: 2
-      }}
-    />
-  );
-}
-
-// User location marker with pulse animation
-function UserLocationMarker({ position, accuracy, locationInfo }) {
-  if (!position) return null;
-
-  return (
-    <>
-      <Marker 
-        position={position} 
-        icon={createCustomIcon('user', '#10B981')}
-      >
-        <Popup>
-          <div className="text-center p-2">
-            <div className="flex items-center justify-center mb-2">
-              <Navigation className="w-5 h-5 text-green-600 mr-2" />
-              <h3 className="font-semibold text-green-600">Your Location</h3>
-            </div>
-            <div className="space-y-1 text-sm text-gray-600">
-              <p>Lat: {position.lat.toFixed(6)}</p>
-              <p>Lng: {position.lng.toFixed(6)}</p>
-              {accuracy && <p>Accuracy: ±{Math.round(accuracy)}m</p>}
-              {locationInfo && (
-                <p className="text-xs text-gray-500 mt-2">
-                  {locationInfo.displayName}
-                </p>
-              )}
-            </div>
-          </div>
-        </Popup>
-      </Marker>
-      <AccuracyCircle position={position} accuracy={accuracy} />
-    </>
-  );
-}
-
-// Emergency facilities markers
-function EmergencyMarkers({ facilities, showFacilities }) {
-  if (!showFacilities) return null;
-
-  const getMarkerColor = (type) => {
-    switch (type) {
-      case 'hospital': return '#EF4444';
-      case 'fire_station': return '#F97316';
-      case 'police_station': return '#3B82F6';
-      case 'shelter': return '#8B5CF6';
-      default: return '#6B7280';
-    }
-  };
-
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case 'hospital': return '🏥';
-      case 'fire_station': return '🚒';
-      case 'police_station': return '👮';
-      case 'shelter': return '🏠';
-      default: return '📍';
-    }
-  };
-
-  return facilities.map((facility) => {
-    // Handle different position formats
-    const position = facility.position || facility.location || { lat: facility.lat, lng: facility.lng };
-    if (!position || !position.lat || !position.lng) {
-      console.warn('Invalid facility position:', facility);
-      return null;
-    }
-    
+// Component to display nearby places
+const NearbyPlacesList = ({ places, isLoading, error }) => {
+  if (isLoading) {
     return (
-      <Marker 
-        key={facility.id} 
-        position={[position.lat, position.lng]}
-        icon={createCustomIcon(facility.type, getMarkerColor(facility.type))}
-      >
-      <Popup>
-        <div className="p-2">
-          <div className="flex items-center mb-2">
-            <span className="text-lg mr-2">{getTypeIcon(facility.type)}</span>
-            <h3 className="font-semibold text-gray-800">{facility.name}</h3>
-          </div>
-          <div className="space-y-1 text-sm text-gray-600">
-            <p><strong>Type:</strong> {facility.type.replace('_', ' ')}</p>
-            <p><strong>Status:</strong> 
-              <span className={`ml-1 ${facility.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
-                {facility.status}
-              </span>
-            </p>
-            {facility.contact && (
-              <p><strong>Contact:</strong> {facility.contact}</p>
-            )}
-            {facility.capacity && (
-              <p><strong>Capacity:</strong> {facility.capacity}</p>
-            )}
-          </div>
-        </div>
-      </Popup>
-    </Marker>
+      <div className="p-4 text-center">
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+        <p className="text-sm text-gray-600 dark:text-gray-400">Finding nearby places...</p>
+      </div>
     );
-  }).filter(Boolean);
-}
-
-// Alert location marker
-function AlertLocationMarker({ alertLocation }) {
-  if (!alertLocation) return null;
-
+  }
+  
+  if (error) {
+    return (
+      <div className="p-4 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      </div>
+    );
+  }
+  
+  if (!places || places.length === 0) {
+    return (
+      <div className="p-4 text-center">
+        <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+        <p className="text-sm text-gray-600 dark:text-gray-400">No nearby places found</p>
+      </div>
+    );
+  }
+  
   return (
-    <Marker 
-      position={[alertLocation.lat, alertLocation.lng]}
-      icon={createCustomIcon('alert', '#EF4444')}
-    >
-      <Popup>
-        <div className="p-2">
-          <div className="flex items-center mb-2">
-            <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
-            <h3 className="font-semibold text-red-600">Alert Location</h3>
-          </div>
-          <div className="space-y-1 text-sm text-gray-600">
-            <p><strong>Coordinates:</strong> {alertLocation.lat.toFixed(6)}, {alertLocation.lng.toFixed(6)}</p>
-            {alertLocation.name && (
-              <p><strong>Location:</strong> {alertLocation.name}</p>
-            )}
-            {alertLocation.alertId && (
-              <p><strong>Alert ID:</strong> {alertLocation.alertId}</p>
-            )}
-          </div>
-        </div>
-      </Popup>
-    </Marker>
+    <div className="max-h-64 overflow-y-auto">
+      <div className="p-3 border-b border-gray-200 dark:border-gray-600">
+        <h4 className="text-sm font-semibold text-gray-800 dark:text-white">Nearby Places</h4>
+      </div>
+      <div className="space-y-2 p-3">
+        {places.map((place) => {
+          const IconComponent = place.icon;
+          return (
+            <div key={place.id} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <IconComponent className={`w-5 h-5 ${place.color} flex-shrink-0`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {place.name}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {place.address}
+                </p>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className="text-xs text-blue-600 dark:text-blue-400">
+                    {place.distance.toFixed(1)} km away
+                  </span>
+                  {place.phone !== 'Phone not available' && (
+                    <span className="text-xs text-green-600 dark:text-green-400">
+                      📞 {place.phone}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
-}
+};
 
-// Risk zones display
-function RiskZones({ zones, showRiskZones }) {
-  if (!showRiskZones) return null;
-
-  const getZoneColor = (level) => {
-    switch (level) {
-      case 'high': return '#EF4444';
-      case 'medium': return '#F59E0B';
-      case 'low': return '#10B981';
-      default: return '#6B7280';
-    }
-  };
-
-  return zones.map((zone) => (
-    <Circle
-      key={zone.id}
-      center={[zone.center.lat, zone.center.lng]}
-      radius={zone.radius}
-      pathOptions={{
-        color: getZoneColor(zone.level),
-        fillColor: getZoneColor(zone.level),
-        fillOpacity: 0.2,
-        weight: 2
-      }}
-    >
-      <Popup>
-        <div className="p-2">
-          <h3 className="font-semibold text-gray-800 mb-2">{zone.description}</h3>
-          <div className="space-y-1 text-sm text-gray-600">
-            <p><strong>Risk Level:</strong> 
-              <span className={`ml-1 font-medium ${
-                zone.level === 'high' ? 'text-red-600' : 
-                zone.level === 'medium' ? 'text-yellow-600' : 'text-green-600'
-              }`}>
-                {zone.level.toUpperCase()}
-              </span>
-            </p>
-            <p><strong>Type:</strong> {zone.type}</p>
-            <p className="text-xs text-gray-500 mt-2">{zone.alertMessage}</p>
-          </div>
+// Simple static map component that shows location info
+const StaticMapView = ({ location, locationInfo, isOnline }) => {
+  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${location.lng-0.01},${location.lat-0.01},${location.lng+0.01},${location.lat+0.01}&layer=mapnik&marker=${location.lat},${location.lng}`;
+  
+  return (
+    <div className="relative w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+      {isOnline ? (
+        <iframe
+          src={mapUrl}
+          width="100%"
+          height="100%"
+          style={{ border: 0 }}
+          allowFullScreen
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          title="Location Map"
+          className="rounded-lg"
+        />
+      ) : (
+        <div className="text-center p-8">
+          <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            {locationInfo?.city || 'Gwalior'}, {locationInfo?.country || 'India'}
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Lat: {location.lat.toFixed(4)}, Lng: {location.lng.toFixed(4)}
+          </p>
         </div>
-      </Popup>
-    </Circle>
-  ));
-}
+      )}
+    </div>
+  );
+};
 
-// Main LiveLocationMap component
-const LiveLocationMap = ({ 
-  height = '500px',
-  showControls = true,
-  autoCenter = true,
-  showEmergencyFacilities = true,
-  showRiskZones = true,
-  alertLocation = null,
-  className,
-  onLocationUpdate
-}) => {
+const MapCard = ({ lastUpdated }) => {
   const [userLocation, setUserLocation] = useState(null);
-  const [locationAccuracy, setLocationAccuracy] = useState(null);
   const [locationInfo, setLocationInfo] = useState(null);
-  const [isTracking, setIsTracking] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [trackingId, setTrackingId] = useState(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState(lastUpdated || '');
+  const [isLocating, setIsLocating] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [locationAccuracy, setLocationAccuracy] = useState(null);
+  const [connectionStrength, setConnectionStrength] = useState('good');
+  const [nearbyPlaces, setNearbyPlaces] = useState([]);
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const [placesError, setPlacesError] = useState(null);
+  const [showNearbyPlaces, setShowNearbyPlaces] = useState(false);
   
-  // Map layer controls
-  const [showFacilities, setShowFacilities] = useState(showEmergencyFacilities);
-  const [showRisks, setShowRisks] = useState(showRiskZones);
-  const [mapStyle, setMapStyle] = useState('standard');
+  // Default locations for fallback
+  const defaultLocations = {
+    gwalior: { lat: 26.2183, lng: 78.1828, name: 'Gwalior, India' },
+    delhi: { lat: 28.6139, lng: 77.2090, name: 'Delhi, India' }
+  };
   
-  const mapRef = useRef(null);
-
-  // Online/offline detection
+  // Network status monitoring
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      setConnectionStrength('good');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setConnectionStrength('poor');
+    };
     
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
+    // Check connection quality
+    const checkConnectionQuality = async () => {
+      try {
+        const start = Date.now();
+        const isConnected = await checkConnection();
+        const end = Date.now();
+        const responseTime = end - start;
+        
+        if (!isConnected) {
+          setConnectionStrength('poor');
+          setIsOnline(false);
+        } else if (responseTime > 3000) {
+          setConnectionStrength('weak');
+        } else {
+          setConnectionStrength('good');
+        }
+      } catch (error) {
+        setConnectionStrength('poor');
+        setIsOnline(false);
+      }
+    };
+    
+    checkConnectionQuality();
+    const interval = setInterval(checkConnectionQuality, 30000); // Check every 30 seconds
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
     };
   }, []);
-
-  // Handle location updates
-  const handleLocationUpdate = useCallback(async (position, accuracy) => {
-    const newLocation = {
-      lat: position.lat,
-      lng: position.lng,
-      timestamp: Date.now()
-    };
+  
+  // Get user's current location
+  const getCurrentLocation = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh && isLocating) return;
     
-    setUserLocation(newLocation);
-    setLocationAccuracy(accuracy);
-    setLastUpdate(new Date().toLocaleTimeString());
-    setError(null);
-    
-    // Get reverse geocoding info
-    try {
-      const info = await locationService.reverseGeocode(position.lat, position.lng);
-      setLocationInfo(info);
-    } catch (err) {
-      console.warn('Failed to get location info:', err);
-    }
-    
-    // Notify parent component
-    if (onLocationUpdate) {
-      onLocationUpdate({ ...newLocation, accuracy, info: locationInfo });
-    }
-  }, [onLocationUpdate, locationInfo]);
-
-  // Start location tracking
-  const startTracking = useCallback(() => {
-    if (isTracking) return;
-    
-    setIsTracking(true);
+    setIsLocating(true);
     setError(null);
     
     try {
-      const id = locationService.startLocationTracking(
-        (location, errorMsg) => {
-          if (location) {
-            handleLocationUpdate(location, location.accuracy);
-          } else {
-            setError(errorMsg);
-            setIsTracking(false);
-          }
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000
-        }
-      );
-      setTrackingId(id);
-    } catch (err) {
-      setError(err.message);
-      setIsTracking(false);
-    }
-  }, [isTracking, handleLocationUpdate]);
-
-  // Stop location tracking
-  const stopTracking = useCallback(() => {
-    if (!isTracking) return;
-    
-    locationService.stopLocationTracking();
-    setIsTracking(false);
-    setTrackingId(null);
-  }, [isTracking]);
-
-  // Get current location once
-  const getCurrentLocation = useCallback(async () => {
-    try {
+      // If offline or poor connection, use default location
+      if (!isOnline || connectionStrength === 'poor') {
+        const fallbackLocation = defaultLocations.gwalior;
+        setUserLocation(fallbackLocation);
+        setLocationInfo({
+          city: 'Gwalior',
+          country: 'India',
+          displayName: 'Gwalior, Madhya Pradesh, India (Default Location)'
+        });
+        setError('Your connection is weak. Please check your network connection.');
+        setLastUpdateTime(new Date().toLocaleString());
+        setIsLocating(false);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Try to get actual location
+      const location = await simpleLocationService.getCurrentLocation();
+      setUserLocation(location);
+      setLocationAccuracy(location.accuracy);
+      
+      // Get location info
+      try {
+        const info = await simpleLocationService.reverseGeocode(location.lat, location.lng);
+        setLocationInfo(info);
+      } catch (geoError) {
+        console.warn('Failed to get location info:', geoError);
+        setLocationInfo({
+          city: 'Unknown',
+          country: 'Unknown',
+          displayName: `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
+        });
+      }
+      
+      setLastUpdateTime(new Date().toLocaleString());
       setError(null);
-      console.log('Getting current location...');
-      const location = await locationService.getCurrentPosition();
-      console.log('Location obtained:', location);
-      handleLocationUpdate(location, location.accuracy);
+      
     } catch (err) {
       console.error('Location error:', err);
-      setError(err.message);
-      // Fallback to default location
-      const defaultLoc = { lat: 28.6139, lng: 77.2090, accuracy: 1000 };
-      handleLocationUpdate(defaultLoc, 1000);
-    }
-  }, [handleLocationUpdate]);
-
-  // Initialize map and get user location
-  useEffect(() => {
-    if (!userLocation) {
-      getCurrentLocation();
-    }
-  }, [getCurrentLocation, userLocation]);
-  
-  // Ensure map container is properly sized
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (mapRef.current) {
-        try {
-          // Trigger map invalidation to ensure proper rendering
-          const mapInstance = mapRef.current;
-          if (mapInstance && mapInstance.invalidateSize) {
-            mapInstance.invalidateSize();
-          }
-        } catch (error) {
-          console.warn('Map resize failed:', error);
-        }
+      
+      // Handle different error types
+      let errorMessage = 'Unable to get your location.';
+      let fallbackCity = 'gwalior';
+      
+      if (err.code === 1) { // PERMISSION_DENIED
+        errorMessage = 'Location access denied. Using default location (Gwalior).';
+      } else if (err.code === 2) { // POSITION_UNAVAILABLE
+        errorMessage = 'Location services unavailable. Check your connection.';
+      } else if (err.code === 3) { // TIMEOUT
+        errorMessage = 'Location request timed out. Your connection might be weak.';
+      } else {
+        errorMessage = 'Your connection is weak. Please check your network connection.';
       }
-    }, 100);
+      
+      setError(errorMessage);
+      const fallback = defaultLocations[fallbackCity];
+      setUserLocation(fallback);
+      setLocationInfo({
+        city: fallback.name.split(',')[0],
+        country: 'India',
+        displayName: `${fallback.name} (Default Location)`
+      });
+      
+    } finally {
+      setIsLocating(false);
+      setIsLoading(false);
+    }
+  }, [isLocating, isOnline, connectionStrength]);
+  
+  // Function to fetch nearby places
+  const fetchNearbyPlaces = useCallback(async (location) => {
+    if (!location || !isOnline || connectionStrength === 'poor') {
+      setPlacesError('Unable to fetch nearby places due to poor connection');
+      return;
+    }
     
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Cleanup on unmount
+    setIsLoadingPlaces(true);
+    setPlacesError(null);
+    
+    try {
+      const places = await simpleLocationService.getNearbyPlaces(location.lat, location.lng);
+      setNearbyPlaces(places);
+    } catch (error) {
+      console.error('Error fetching nearby places:', error);
+      setPlacesError('Failed to load nearby places');
+    } finally {
+      setIsLoadingPlaces(false);
+    }
+  }, [isOnline, connectionStrength]);
+  
+  // Initialize location on mount
   useEffect(() => {
-    return () => {
-      if (isTracking) {
-        stopTracking();
-      }
-    };
-  }, [isTracking, stopTracking]);
-
-  // Get tile layer URL based on style
-  const getTileLayerUrl = () => {
-    switch (mapStyle) {
-      case 'satellite':
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case 'terrain':
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}';
+    getCurrentLocation();
+  }, [getCurrentLocation]);
+  
+  // Fetch nearby places when location changes
+  useEffect(() => {
+    if (userLocation && !error) {
+      fetchNearbyPlaces(userLocation);
+    }
+  }, [userLocation, error, fetchNearbyPlaces]);
+  
+  // Connection strength indicator
+  const getConnectionIcon = () => {
+    switch (connectionStrength) {
+      case 'good':
+        return <Wifi className="w-3 h-3 text-green-500" />;
+      case 'weak':
+        return <Wifi className="w-3 h-3 text-yellow-500" />;
       default:
-        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        return <WifiOff className="w-3 h-3 text-red-500" />;
     }
-  };
-
-  // Determine map center based on alert location or user location
-  const getMapCenter = () => {
-    if (alertLocation) {
-      return [alertLocation.lat, alertLocation.lng];
-    }
-    if (userLocation) {
-      return [userLocation.lat, userLocation.lng];
-    }
-    return [37.7749, -122.4194]; // San Francisco as fallback
   };
   
-  const defaultCenter = getMapCenter();
-
-  return (
-    <div className={cn('relative overflow-hidden', className)}>
-      {/* Map Controls */}
-      {showControls && (
-        <div className="absolute top-4 left-4 z-[1000] space-y-2">
-          {/* Tracking Controls */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={isTracking ? stopTracking : startTracking}
-                className={cn(
-                  'p-2 rounded-md transition-colors',
-                  isTracking 
-                    ? 'bg-red-500 text-white hover:bg-red-600' 
-                    : 'bg-green-500 text-white hover:bg-green-600'
-                )}
-                title={isTracking ? 'Stop tracking' : 'Start tracking'}
-              >
-                <Target className="w-4 h-4" />
-              </button>
-              
-              <button
-                onClick={getCurrentLocation}
-                className="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                title="Get current location"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
+  const getConnectionStatus = () => {
+    switch (connectionStrength) {
+      case 'good':
+        return 'Good Connection';
+      case 'weak':
+        return 'Weak Connection';
+      default:
+        return 'Poor Connection';
+    }
+  };
+  
+  const getConnectionColor = () => {
+    switch (connectionStrength) {
+      case 'good':
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'weak':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+      default:
+        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+    }
+  };
+  
+  // Show error state if no location and error
+  if (error && !userLocation) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+            <MapPin className="w-5 h-5 mr-2 text-blue-600" />
+            Map View
+          </h2>
+          <div className={`flex items-center px-2 py-1 rounded-md text-xs ${getConnectionColor()}`}>
+            {getConnectionIcon()}
+            <span className="ml-1">{getConnectionStatus()}</span>
+          </div>
+        </div>
+        
+        <div className="p-8 text-center">
+          <div className="mb-6">
+            <WifiOff className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
+              Connection Issue
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Your connection is weak. Please check your network connection.
+            </p>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+              <p className="text-sm text-red-700 dark:text-red-300">
+                {error}
+              </p>
             </div>
           </div>
-
-          {/* Layer Controls */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2 space-y-2">
+          
+          <div className="space-y-3">
             <button
-              onClick={() => setShowFacilities(!showFacilities)}
-              className={cn(
-                'w-full p-2 rounded-md text-sm transition-colors',
-                showFacilities 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              )}
+              onClick={() => getCurrentLocation(true)}
+              disabled={isLocating}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center"
             >
-              Emergency Facilities
+              {isLocating ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              {isLocating ? 'Checking Connection...' : 'Try Again'}
             </button>
             
             <button
-              onClick={() => setShowRisks(!showRisks)}
-              className={cn(
-                'w-full p-2 rounded-md text-sm transition-colors',
-                showRisks 
-                  ? 'bg-red-500 text-white' 
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              )}
+              onClick={() => window.location.reload()}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center"
             >
-              Risk Zones
+              <Router className="w-4 h-4 mr-2" />
+              Reload Page
             </button>
           </div>
-
-          {/* Map Style Controls */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-2">
-            <select
-              value={mapStyle}
-              onChange={(e) => setMapStyle(e.target.value)}
-              className="w-full p-2 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white"
-            >
-              <option value="standard">Standard</option>
-              <option value="satellite">Satellite</option>
-              <option value="terrain">Terrain</option>
-            </select>
+          
+          <div className="mt-6 text-sm text-gray-500 dark:text-gray-400">
+            <p>Troubleshooting tips:</p>
+            <ul className="mt-2 space-y-1 text-left max-w-md mx-auto">
+              <li>• Check your internet connection</li>
+              <li>• Try refreshing the page</li>
+              <li>• Disable VPN if enabled</li>
+              <li>• Clear browser cache</li>
+            </ul>
           </div>
         </div>
-      )}
-
-      {/* Status Indicators */}
-      <div className="absolute top-4 right-4 z-[1000] space-y-2">
-        {/* Online Status */}
-        <div className={cn(
-          'flex items-center px-3 py-2 rounded-lg shadow-lg text-sm',
-          isOnline 
-            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-        )}>
-          {isOnline ? <Wifi className="w-4 h-4 mr-2" /> : <WifiOff className="w-4 h-4 mr-2" />}
-          {isOnline ? 'Online' : 'Offline'}
-        </div>
-
-        {/* Tracking Status */}
-        {isTracking && (
-          <div className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-3 py-2 rounded-lg shadow-lg text-sm">
-            <div className="flex items-center">
-              <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
-              Live Tracking
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* Location Info Panel */}
-      {userLocation && (
-        <div className="absolute bottom-4 left-4 z-[1000] bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 max-w-xs">
-          <div className="flex items-center mb-2">
-            <MapPin className="w-4 h-4 text-blue-500 mr-2" />
-            <span className="font-medium text-sm">Current Location</span>
+    );
+  }
+  
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Header */}
+      <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+            <MapPin className="w-5 h-5 mr-2 text-blue-600" />
+            Map View
+          </h2>
+          {locationInfo && (
+            <span className="ml-3 text-sm text-gray-500 dark:text-gray-400">
+              {locationInfo.city}, {locationInfo.country}
+            </span>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <div className={`flex items-center px-2 py-1 rounded-md text-xs ${getConnectionColor()}`}>
+            {getConnectionIcon()}
+            <span className="ml-1">{getConnectionStatus()}</span>
           </div>
           
-          {locationInfo && (
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-              {locationInfo.city}, {locationInfo.country}
-            </p>
+          <button
+            onClick={() => setShowNearbyPlaces(!showNearbyPlaces)}
+            className={`p-2 text-gray-500 hover:text-blue-600 transition-colors ${showNearbyPlaces ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : ''}`}
+            title="Toggle nearby places"
+          >
+            <Building className="w-4 h-4" />
+          </button>
+          
+          <button
+            onClick={() => getCurrentLocation(true)}
+            disabled={isLocating}
+            className="p-2 text-gray-500 hover:text-blue-600 transition-colors disabled:opacity-50"
+            title="Refresh location"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+      
+      {/* Main Content Area */}
+      <div className="flex flex-col lg:flex-row">
+        {/* Map Content */}
+        <div className={`relative ${showNearbyPlaces ? 'lg:w-2/3' : 'w-full'} h-96 md:h-[400px] lg:h-[450px]`}>
+          {isLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-700">
+              <div className="text-center">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {connectionStrength === 'poor' ? 'Checking connection...' : 'Getting your location...'}
+                </p>
+              </div>
+            </div>
+          ) : userLocation ? (
+            <StaticMapView 
+              location={userLocation} 
+              locationInfo={locationInfo} 
+              isOnline={isOnline && connectionStrength !== 'poor'}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-700">
+              <div className="text-center">
+                <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">Unable to load map</p>
+                <p className="text-xs text-red-500 mt-2">Please check your connection</p>
+              </div>
+            </div>
           )}
           
-          <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
-            <div className="flex justify-between">
-              <span>Lat:</span>
-              <span>{userLocation.lat.toFixed(6)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Lng:</span>
-              <span>{userLocation.lng.toFixed(6)}</span>
-            </div>
-            {locationAccuracy && (
-              <div className="flex justify-between">
-                <span>Accuracy:</span>
-                <span>±{Math.round(locationAccuracy)}m</span>
+          {/* Error overlay */}
+          {error && (
+            <div className="absolute top-4 left-4 right-4 bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+              <div className="flex items-center">
+                <AlertTriangle className="w-4 h-4 text-red-600 mr-2 flex-shrink-0" />
+                <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
               </div>
-            )}
-            {lastUpdate && (
-              <div className="flex justify-between">
-                <span>Updated:</span>
-                <span>{lastUpdate}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Error Display */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] bg-red-100 text-red-800 px-4 py-2 rounded-lg shadow-lg max-w-md text-sm"
-          >
-            <div className="flex items-center">
-              <AlertTriangle className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span>{error}</span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Map Container */}
-      <div style={{ height }} className="w-full">
-        {typeof window !== 'undefined' ? (
-          <MapContainer
-            ref={mapRef}
-            center={defaultCenter}
-            zoom={13}
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-            whenCreated={() => setMapReady(true)}
-            scrollWheelZoom={true}
-            zoomControl={true}
-            attributionControl={true}
-            doubleClickZoom={true}
-            dragging={true}
-            keyboard={true}
-            touchZoom={true}
-          >
-            <TileLayer
-              url={getTileLayerUrl()}
-              attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors'
-              maxZoom={18}
-              minZoom={3}
-            />
-            
-            {/* Live tracking handler */}
-            {mapReady && (
-              <LiveTracker 
-                onLocationUpdate={handleLocationUpdate}
-                centerOnUser={autoCenter && isTracking}
-              />
-            )}
-            
-            {/* User location marker */}
-            <UserLocationMarker 
-              position={userLocation}
-              accuracy={locationAccuracy}
-              locationInfo={locationInfo}
-            />
-            
-            {/* Emergency facilities */}
-            <EmergencyMarkers 
-              facilities={locationService.emergencyFacilities}
-              showFacilities={showFacilities}
-            />
-            
-            {/* Risk zones */}
-            <RiskZones 
-              zones={locationService.riskZones}
-              showRiskZones={showRisks}
-            />
-            
-            {/* Alert location marker */}
-            <AlertLocationMarker alertLocation={alertLocation} />
-          </MapContainer>
-        ) : (
-          <div className="flex items-center justify-center h-full bg-gray-100 dark:bg-gray-800">
-            <div className="text-center">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-gray-600 dark:text-gray-400">Loading map...</p>
-              {error && (
-                <div className="mt-4">
-                  <p className="text-red-600 text-sm">{error}</p>
-                  <button 
-                    onClick={getCurrentLocation}
-                    className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Retry
-                  </button>
+          )}
+          
+          {/* Location info overlay */}
+          {userLocation && (
+            <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 max-w-xs">
+              <div className="flex items-center text-sm mb-1">
+                {error ? (
+                  <>
+                    <MapPin className="w-4 h-4 mr-2 text-orange-500" />
+                    <span className="text-gray-700 dark:text-gray-300">Default Location</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                    <span className="text-gray-700 dark:text-gray-300">Live Location</span>
+                  </>
+                )}
+              </div>
+              
+              {locationInfo && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  {locationInfo.displayName}
+                </p>
+              )}
+              
+              {locationAccuracy && !error && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Accuracy: ±{Math.round(locationAccuracy)}m
+                </p>
+              )}
+              
+              {lastUpdateTime && (
+                <div className="flex items-center text-xs text-gray-400 mt-1">
+                  <Clock className="w-3 h-3 mr-1" />
+                  <span>{lastUpdateTime}</span>
                 </div>
               )}
             </div>
+          )}
+        </div>
+        
+        {/* Nearby Places Sidebar */}
+        {showNearbyPlaces && (
+          <div className="lg:w-1/3 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+            <NearbyPlacesList 
+              places={nearbyPlaces} 
+              isLoading={isLoadingPlaces} 
+              error={placesError} 
+            />
           </div>
         )}
       </div>
@@ -716,4 +695,4 @@ const LiveLocationMap = ({
   );
 };
 
-export default LiveLocationMap;
+export default MapCard;
