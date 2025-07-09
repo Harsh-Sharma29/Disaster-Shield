@@ -24,14 +24,6 @@ DisasterShield is an AI-powered, decentralized disaster management system that l
 - **Backend:** Node.js, Express, MongoDB, MySQL, Mongoose, Socket.io
 - **Dev Tools:** ESLint, Prettier, Nodemon, Concurrently
 
-## Project Structure
-
-Project/
-├── src/           # Frontend code
-├── server/        # Backend code
-├── public/        # Static assets
-├── package.json   # Project config
-└── 
 ## Routing & Navigation
 - Main routes: `/dashboard`, `/alerts`, `/resources`, `/map`, `/teams`, `/settings`
 - Dynamic routes: `/alerts/:alertId`, `/resources/:resourceId`, etc.
@@ -361,19 +353,6 @@ npm run preview
 npm run analyze
 ```
 
-## 🚀 Deployment Options
-
-### **🐳 Docker Deployment**
-```bash
-# Build Docker image
-docker build -t disaster-shield .
-
-# Run container
-docker run -p 3000:3000 -p 5000:5000 disaster-shield
-
-# Using Docker Compose
-docker-compose up -d
-```
 
 ### **☁️ Cloud Deployment**
 
@@ -386,19 +365,6 @@ npm i -g vercel
 vercel
 ```
 
-#### **Heroku (Full Stack)**
-```bash
-# Install Heroku CLI
-# Create new app
-heroku create disaster-shield-app
-
-# Set environment variables
-heroku config:set NODE_ENV=production
-
-# Deploy
-git push heroku main
-```
-
 ## 🔒 Security Features
 
 - **🛡️ Authentication**: JWT-based secure login system
@@ -409,18 +375,6 @@ git push heroku main
 - **🛡️ XSS Protection**: Cross-site scripting prevention
 - **🚨 Rate Limiting**: API abuse prevention
 
-## 🤝 Contributing
-
-### **🌟 How to Contribute**
-
-1. **🍴 Fork the repository**
-2. **🌿 Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **💻 Make your changes** (follow coding standards)
-4. **✅ Add tests** for new functionality
-5. **📝 Update documentation** if needed
-6. **✨ Commit your changes** (`git commit -m 'Add amazing feature'`)
-7. **📤 Push to branch** (`git push origin feature/amazing-feature`)
-8. **🔄 Open a Pull Request** with detailed description
 
 ### **📋 Development Guidelines**
 
@@ -440,15 +394,14 @@ git push heroku main
 - ✅ Resource tracking system
 - ✅ Responsive design
 
-### **🚀 Phase 2: Enhancement (Q2 2025)**
+### **🚀 Phase 2: Enhancement **
 - 🔄 Advanced mapping features
 - 🔄 Mobile application development
 - 🔄 Enhanced analytics dashboard
 - 🔄 Machine learning integration
 - 🔄 Multi-language support
 
-### **🌟 Phase 3: Advanced Features (Q3-Q4 2025)**
-- 📋 IoT sensor network integration
+### **🌟 Phase 3: Advanced Features**
 - 📋 Advanced predictive modeling
 - 📋 Multi-agency coordination platform
 - 📋 International compliance standards
@@ -497,3 +450,7 @@ This project stands on the shoulders of giants:
 - Vite team for the lightning-fast development experience
 - MongoDB and MySQL teams for robust database solutions
 - All open source contributors who make projects like this possible
+
+
+##video link
+https://drive.google.com/drive/folders/1RqtDxxg3SyRG0rROvd26ptO_N1OwciAF?usp=sharing
