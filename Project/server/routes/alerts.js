@@ -5,7 +5,6 @@
 import express from 'express';
 import Alert from '../models/Alert.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import notificationService from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -174,14 +173,8 @@ router.post('/',
 
       await alert.save();
 
-      // Send notifications to affected users
-      try {
-        const notificationResults = await notificationService.sendAlertNotifications(alert);
-        console.log('Notification results:', notificationResults);
-      } catch (notificationError) {
-        console.error('Failed to send notifications:', notificationError);
-        // Don't fail the alert creation if notifications fail
-      }
+      // TODO: Send notifications to affected users
+      // await notificationService.sendAlertNotifications(alert);
 
       res.status(201).json({
         success: true,
@@ -360,134 +353,7 @@ router.get('/search', async (req, res) => {
       error: error.message
     });
   }
-);
-
-/**
- * @route   POST /api/alerts/test-notification
- * @desc    Test notification system
- * @access  Private (admin only)
- */
-router.post('/test-notification',
-  authenticate,
-  authorize('system_admin'),
-  async (req, res) => {
-    try {
-      const testResults = await notificationService.testNotification();
-      
-      res.json({
-        success: true,
-        message: 'Notification system test completed',
-        data: testResults
-      });
-    } catch (error) {
-      console.error('Test notification error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to test notification system',
-        error: error.message
-      });
-    }
-  }
-);
-
-/**
- * @route   POST /api/alerts/:id/send-targeted
- * @desc    Send targeted notification for existing alert
- * @access  Private (coordinators and above)
- */
-router.post('/:id/send-targeted',
-  authenticate,
-  authorize('send_alerts'),
-  async (req, res) => {
-    try {
-      const { userIds, roles } = req.body;
-      
-      const alert = await Alert.findById(req.params.id);
-      if (!alert) {
-        return res.status(404).json({
-          success: false,
-          message: 'Alert not found'
-        });
-      }
-
-      let results;
-      
-      if (userIds && userIds.length > 0) {
-        // Send to specific users
-        results = await notificationService.sendTargetedNotification(userIds, alert);
-      } else if (roles && roles.length > 0) {
-        // Send to users with specific roles
-        results = { sms: { sent: 0, failed: 0, errors: [] }, email: { sent: 0, failed: 0, errors: [] } };
-        
-        for (const role of roles) {
-          const roleResults = await notificationService.sendRoleBasedNotification(role, alert);
-          results.sms.sent += roleResults.sms.sent;
-          results.sms.failed += roleResults.sms.failed;
-          results.sms.errors.push(...roleResults.sms.errors);
-          results.email.sent += roleResults.email.sent;
-          results.email.failed += roleResults.email.failed;
-          results.email.errors.push(...roleResults.email.errors);
-        }
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Either userIds or roles must be provided'
-        });
-      }
-
-      res.json({
-        success: true,
-        message: 'Targeted notifications sent',
-        data: results
-      });
-    } catch (error) {
-      console.error('Send targeted notification error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send targeted notifications',
-        error: error.message
-      });
-    }
-  }
-);
-
-/**
- * @route   POST /api/alerts/:id/resend-notifications
- * @desc    Resend notifications for an existing alert
- * @access  Private (coordinators and above)
- */
-router.post('/:id/resend-notifications',
-  authenticate,
-  authorize('send_alerts'),
-  async (req, res) => {
-    try {
-      const { options } = req.body;
-      
-      const alert = await Alert.findById(req.params.id);
-      if (!alert) {
-        return res.status(404).json({
-          success: false,
-          message: 'Alert not found'
-        });
-      }
-
-      const results = await notificationService.sendAlertNotifications(alert, options || {});
-      
-      res.json({
-        success: true,
-        message: 'Notifications resent successfully',
-        data: results
-      });
-    } catch (error) {
-      console.error('Resend notifications error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to resend notifications',
-        error: error.message
-      });
-    }
-  }
-);
+});
 
 export { router as alertRoutes };
 export default router;
