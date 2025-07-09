@@ -1,4 +1,3 @@
-// Route definitions and navigation utilities
 export const routes = {
   dashboard: '/dashboard',
   alerts: '/alerts',
