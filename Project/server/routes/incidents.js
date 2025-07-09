@@ -12,8 +12,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
-// Get incident by ID
 router.get('/:id', async (req, res) => {
   try {
     const incident = await Incident.findById(req.params.id);
