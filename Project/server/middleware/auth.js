@@ -1,8 +1,16 @@
+/**
+ * Authentication Middleware
+ * Handles JWT authentication, authorization, and security
+ */
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User.js';
 
+/**
+ * JWT Authentication Middleware
+ * Verifies JWT tokens and attaches user to request
+ */
 export const authenticate = async (req, res, next) => {
   try {
     // Get token from header, cookie, or query parameter
